@@ -31,7 +31,7 @@ ${idea}
 
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.AIzaSyB9GqQ_xFwknOrxiyaw3WiiTOa615Xbk-k}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
