@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 /* ---------------- AI ENDPOINT ---------------- */
-app.post("", async (req, res) => {
+app.post("/api/ai", async (req, res) => {
   const { idea } = req.body;
 
   const prompt = `
@@ -65,5 +65,6 @@ app.post("/api/create-order", async (req, res) => {
 app.listen(5000, () => {
   console.log("BizMentor AI backend running on port 5000");
 });
+
 
 
