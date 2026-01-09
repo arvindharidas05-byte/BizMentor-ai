@@ -5,33 +5,51 @@ import cors from "cors";
 import dotenv from "dotenv";
 
 dotenv.config();
+
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 5000;
+
+/* ---------- MIDDLEWARE ---------- */
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+}));
 app.use(express.json());
 
-/* ---------------- AI ENDPOINT ---------------- */
-app.post("/api/ai", async (req, res) => {
-  const { idea } = req.body;
+/* ---------- HEALTH CHECK ---------- */
+app.get("/", (req, res) => {
+  res.send("✅ BizMentor AI backend is running");
+});
 
-  const prompt = `
+/* ---------- AI ENDPOINT ---------- */
+app.post("/api/ai", async (req, res) => {
+  try {
+    const { idea } = req.body;
+
+    if (!idea || idea.trim().length < 10) {
+      return res.status(400).json({
+        error: "Startup idea is too short or missing"
+      });
+    }
+
+    const prompt = `
 You are BizMentor AI.
 
 CEO:
-Vision & roadmap.
+Give vision and roadmap.
 
 CFO:
-Costing, pricing, profit.
+Give costing, pricing and profit plan.
 
 CMO:
-Marketing & growth.
+Give marketing and growth strategy.
 
 Startup idea:
 ${idea}
 `;
 
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.AIzaSyB9GqQ_xFwknOrxiyaw3WiiTOa615Xbk-k}`,
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,30 +59,44 @@ ${idea}
       }
     );
 
-    const data = await r.json();
-    res.json({ result: data.candidates[0].content.parts[0].text });
-  } catch (err) {
-    res.status(500).json({ error: "AI failed" });
+    const data = await response.json();
+
+    if (!data.candidates || !data.candidates[0]) {
+      return res.status(500).json({ error: "AI response failed" });
+    }
+
+    res.json({
+      result: data.candidates[0].content.parts[0].text
+    });
+
+  } catch (error) {
+    console.error("AI ERROR:", error);
+    res.status(500).json({ error: "Internal AI error" });
   }
 });
 
-/* ---------------- RAZORPAY ---------------- */
+/* ---------- RAZORPAY ---------- */
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_SECRET
 });
 
 app.post("/api/create-order", async (req, res) => {
-  const order = await razorpay.orders.create({
-    amount: 49900,
-    currency: "INR"
-  });
-  res.json(order);
+  try {
+    const order = await razorpay.orders.create({
+      amount: 49900, // ₹499
+      currency: "INR",
+      receipt: "bizmentor_order_" + Date.now()
+    });
+
+    res.json(order);
+  } catch (error) {
+    console.error("RAZORPAY ERROR:", error);
+    res.status(500).json({ error: "Payment order failed" });
+  }
 });
 
-app.listen(5000, () => {
-  console.log("BizMentor AI backend running on port 5000");
+/* ---------- START SERVER ---------- */
+app.listen(PORT, () => {
+  console.log(`🚀 BizMentor AI backend running on port ${PORT}`);
 });
-
-
-
