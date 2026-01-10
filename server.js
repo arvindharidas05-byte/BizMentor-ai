@@ -1,102 +1,93 @@
-import express from "express";
-import fetch from "node-fetch";
-import Razorpay from "razorpay";
-import cors from "cors";
-import dotenv from "dotenv";
-
-dotenv.config();
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Razorpay = require('razorpay');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const port = process.env.PORT || 3000;
 
-/* ---------- MIDDLEWARE ---------- */
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-}));
-app.use(express.json());
+// Middleware
+app.use(cors()); // Allow frontend to talk to backend
+app.use(express.json()); // Parse JSON bodies
 
-/* ---------- HEALTH CHECK ---------- */
-app.get("/", (req, res) => {
-  res.send("✅ BizMentor AI backend is running");
-});
+// --- Config ---
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-/* ---------- AI ENDPOINT ---------- */
-app.post("/api/ai", async (req, res) => {
-  try {
-    const { idea } = req.body;
-
-    if (!idea || idea.trim().length < 10) {
-      return res.status(400).json({
-        error: "Startup idea is too short or missing"
-      });
-    }
-
-    const prompt = `
-You are BizMentor AI.
-
-CEO:
-Give vision and roadmap.
-
-CFO:
-Give costing, pricing and profit plan.
-
-CMO:
-Give marketing and growth strategy.
-
-Startup idea:
-${idea}
-`;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if (!data.candidates || !data.candidates[0]) {
-      return res.status(500).json({ error: "AI response failed" });
-    }
-
-    res.json({
-      result: data.candidates[0].content.parts[0].text
-    });
-
-  } catch (error) {
-    console.error("AI ERROR:", error);
-    res.status(500).json({ error: "Internal AI error" });
-  }
-});
-
-/* ---------- RAZORPAY ---------- */
+// Initialize Razorpay
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_SECRET
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-app.post("/api/create-order", async (req, res) => {
-  try {
-    const order = await razorpay.orders.create({
-      amount: 49900, // ₹499
-      currency: "INR",
-      receipt: "bizmentor_order_" + Date.now()
-    });
+// --- Routes ---
 
-    res.json(order);
-  } catch (error) {
-    console.error("RAZORPAY ERROR:", error);
-    res.status(500).json({ error: "Payment order failed" });
-  }
+// Health Check
+app.get('/', (req, res) => {
+    res.send('BizMentor API is running!');
 });
 
-/* ---------- START SERVER ---------- */
-app.listen(PORT, () => {
-  console.log(`🚀 BizMentor AI backend running on port ${PORT}`);
+// AI Endpoint
+app.post('/api/ai', async (req, res) => {
+    try {
+        const { idea } = req.body;
+        if (!idea) return res.status(400).json({ error: "Idea is required" });
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const prompt = `
+        Act as a board of C-level executives (CEO, CFO, CMO) for a startup. 
+        The startup idea is: "${idea}".
+        
+        Provide a response in the following format using HTML-friendly styling (like **bold** for headers):
+        
+        <br>
+        **🤖 CEO (Vision & Roadmap):**
+        [Provide a 3-step strategic roadmap]
+        
+        <br>
+        **💰 CFO (Financials):**
+        [Estimate initial costs and suggest a pricing model]
+        
+        <br>
+        **🚀 CMO (Marketing):**
+        [Suggest 2 key marketing channels and a catchy slogan]
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        res.json({ result: text });
+
+    } catch (error) {
+        console.error("AI Error:", error);
+        res.status(500).json({ error: "Failed to generate advice." });
+    }
+});
+
+// Razorpay Order Endpoint
+app.post('/api/create-order', async (req, res) => {
+    try {
+        const { amount } = req.body; // Amount in INR
+        
+        const options = {
+            amount: amount * 100, // Razorpay takes amount in paise (multiply by 100)
+            currency: "INR",
+            receipt: "order_rcptid_" + Date.now(),
+        };
+
+        const order = await razorpay.orders.create(options);
+        res.json(order);
+
+    } catch (error) {
+        console.error("Payment Error:", error);
+        res.status(500).json({ error: "Failed to create order" });
+    }
+});
+
+// Start Server
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
